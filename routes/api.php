@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\VendorProfileController;
 use App\Http\Controllers\Api\BuyerProfileController;
 use App\Http\Controllers\Api\TranslationController;
 use App\Http\Controllers\Api\AgoraController;
+use App\Http\Controllers\Api\KycController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -28,11 +29,11 @@ Route::prefix('v1')->group(function () {
 
     // ── Translation System ─────────────────────────────────────────────────────
     Route::prefix('translations')->group(function () {
-        Route::get('locales',              [TranslationController::class, 'locales']);
-        Route::get('version',              [TranslationController::class, 'version']);
-        Route::get('{locale}',             [TranslationController::class, 'byLocale']);
-        Route::get('{locale}/{group}',     [TranslationController::class, 'byGroup']);
-        Route::post('{locale}/{group}/{key}', [TranslationController::class, 'upsert']);
+        Route::get('locales',                [TranslationController::class, 'locales']);
+        Route::get('version',                [TranslationController::class, 'version']);
+        Route::get('{locale}',               [TranslationController::class, 'byLocale']);
+        Route::get('{locale}/{group}',       [TranslationController::class, 'byGroup']);
+        Route::post('{locale}/{group}/{key}',[TranslationController::class, 'upsert']);
     });
 
     // ── Auth ───────────────────────────────────────────────────────────────────
@@ -46,10 +47,18 @@ Route::prefix('v1')->group(function () {
 
         // Protected
         Route::middleware('auth:sanctum')->group(function () {
-            Route::post('logout',               [AuthController::class, 'logout']);
-            Route::get('me',                    [AuthController::class, 'me']);
-            Route::post('buyer/profile/photo',  [AuthController::class, 'updateBuyerProfilePhoto']);
-            Route::post('vendor/profile',       [AuthController::class, 'updateVendorProfile']);
+            Route::post('logout',              [AuthController::class, 'logout']);
+            Route::get('me',                   [AuthController::class, 'me']);
+            Route::post('buyer/profile/photo', [AuthController::class, 'updateBuyerProfilePhoto']);
+            Route::post('vendor/profile',      [AuthController::class, 'updateVendorProfile']);
+
+            // FCM token — saved on login from Flutter so calls/chat
+            // push notifications can reach the device
+            Route::post('fcm-token', function (\Illuminate\Http\Request $request) {
+                $request->validate(['fcm_token' => 'required|string']);
+                $request->user()->update(['fcm_token' => $request->fcm_token]);
+                return response()->json(['status' => true]);
+            });
         });
     });
 
@@ -70,28 +79,63 @@ Route::prefix('v1')->group(function () {
         ->post('ads/{id}/favorite', [VendorDashboardController::class, 'toggleFavorite'])
         ->where('id', '[0-9]+');
 
+    // ── KYC Verification (Shared – Buyer & Vendor) ─────────────────────────────
+    // Both buyers and vendors go through the same KYC flow.
+    // The Flutter KYCScreen is shared between both roles.
+    Route::middleware('auth:sanctum')->prefix('kyc')->group(function () {
+
+        // GET  /api/v1/kyc/status
+        // Called on KYCScreen load to pre-fill the progress bar
+        Route::get('status', [KycController::class, 'status']);
+
+        // ── Email ──────────────────────────────────────────────────────────
+        // POST /api/v1/kyc/email/send
+        // Called when Flutter taps "Send Verification Code"
+        Route::post('email/send',   [KycController::class, 'sendEmailOtp']);
+
+        // POST /api/v1/kyc/email/verify
+        // Called when Flutter submits the 6-digit code
+        Route::post('email/verify', [KycController::class, 'verifyEmail']);
+
+        // ── Phone ──────────────────────────────────────────────────────────
+        // POST /api/v1/kyc/phone/send
+        // Called when Flutter taps "Send SMS Code"
+        Route::post('phone/send',   [KycController::class, 'sendPhoneOtp']);
+
+        // POST /api/v1/kyc/phone/verify
+        // Called when Flutter submits the 6-digit SMS code
+        Route::post('phone/verify', [KycController::class, 'verifyPhone']);
+
+        // ── Identity ───────────────────────────────────────────────────────
+        // POST /api/v1/kyc/identity/verify
+        // Called when Flutter taps "Verify with NIN"
+        // Accepts: nin (required), document (optional file)
+        Route::post('identity/verify', [KycController::class, 'verifyIdentity']);
+    });
+
     // ── Buyer Protected Routes ─────────────────────────────────────────────────
     Route::middleware('auth:sanctum')->prefix('buyers')->group(function () {
 
         // Profile
         Route::prefix('profile')->group(function () {
-            Route::get('/',            [BuyerProfileController::class, 'show']);
-            Route::put('update',       [BuyerProfileController::class, 'update']);
-            Route::post('upload-photo',[BuyerProfileController::class, 'uploadPhoto']);
+            Route::get('/',             [BuyerProfileController::class, 'show']);
+            Route::put('update',        [BuyerProfileController::class, 'update']);
+            Route::post('upload-photo', [BuyerProfileController::class, 'uploadPhoto']);
         });
 
         // Favorites
-        Route::get('favorites',             [FavoritesController::class, 'index']);
-        Route::delete('favorites/{adId}',   [FavoritesController::class, 'destroy'])
+        Route::get('favorites',           [FavoritesController::class, 'index']);
+        Route::delete('favorites/{adId}', [FavoritesController::class, 'destroy'])
             ->where('adId', '[0-9]+');
     });
 
     // ── Messaging / Chats (Shared – Buyer & Vendor) ────────────────────────────
     Route::middleware('auth:sanctum')->prefix('chats')->group(function () {
-        Route::get('/',                  [ChatController::class, 'index']);
-        Route::post('/',                 [ChatController::class, 'start']);
-        Route::get('{id}/messages',      [ChatController::class, 'messages']);
-        Route::post('{id}/messages',     [ChatController::class, 'send']);
+        Route::get('/',              [ChatController::class, 'index']);
+        Route::post('/',             [ChatController::class, 'start']);
+        Route::get('{id}/messages',  [ChatController::class, 'messages']);
+        Route::post('{id}/messages', [ChatController::class, 'send']);
+        Route::post('{id}/read',     [ChatController::class, 'markRead']);
     });
 
     // ── Calls (Shared – Buyer & Vendor) ───────────────────────────────────────
@@ -99,20 +143,17 @@ Route::prefix('v1')->group(function () {
     // Placed outside vendor-only middleware so buyers can call vendors too.
     Route::middleware('auth:sanctum')->prefix('calls')->group(function () {
 
-        // Generate an Agora RTC token for joining a channel
         // POST /api/v1/calls/token
         // Body: { "channel_name": "uuid-string", "uid": 1 }
-        Route::post('token', [AgoraController::class, 'generateToken']);
+        Route::post('token',    [AgoraController::class, 'generateToken']);
 
-        // Notify the other party of an incoming call via FCM
         // POST /api/v1/calls/initiate
         // Body: { "receiver_id": 5, "channel_name": "uuid", "caller_name": "John", "call_type": "audio|video" }
         Route::post('initiate', [AgoraController::class, 'initiateCall']);
 
-        // Notify the other party that the call was ended/declined
         // POST /api/v1/calls/end
         // Body: { "receiver_id": 5, "channel_name": "uuid" }
-        Route::post('end', [AgoraController::class, 'endCall']);
+        Route::post('end',      [AgoraController::class, 'endCall']);
     });
 
     // ── Vendor Protected Routes ────────────────────────────────────────────────
@@ -124,10 +165,10 @@ Route::prefix('v1')->group(function () {
 
         // Profile
         Route::prefix('profile')->group(function () {
-            Route::get('/',       [VendorProfileController::class, 'show']);
-            Route::patch('/',     [VendorProfileController::class, 'update']);
-            Route::post('photo',  [VendorProfileController::class, 'updatePhoto']);
-            Route::post('logo',   [VendorProfileController::class, 'updateLogo']);
+            Route::get('/',      [VendorProfileController::class, 'show']);
+            Route::patch('/',    [VendorProfileController::class, 'update']);
+            Route::post('photo', [VendorProfileController::class, 'updatePhoto']);
+            Route::post('logo',  [VendorProfileController::class, 'updateLogo']);
         });
 
         // Voucher / Wallet
@@ -140,11 +181,11 @@ Route::prefix('v1')->group(function () {
 
         // Settings & Account
         Route::prefix('settings')->group(function () {
-            Route::get('/',                 [VendorSettingsController::class, 'show']);
-            Route::patch('/',               [VendorSettingsController::class, 'update']);
-            Route::get('options',           [VendorSettingsController::class, 'options']);
-            Route::post('change-password',  [VendorSettingsController::class, 'changePassword']);
-            Route::delete('account',        [VendorSettingsController::class, 'deleteAccount']);
+            Route::get('/',                [VendorSettingsController::class, 'show']);
+            Route::patch('/',              [VendorSettingsController::class, 'update']);
+            Route::get('options',          [VendorSettingsController::class, 'options']);
+            Route::post('change-password', [VendorSettingsController::class, 'changePassword']);
+            Route::delete('account',       [VendorSettingsController::class, 'deleteAccount']);
         });
 
         // Ad Management

@@ -24,6 +24,8 @@ class User extends Authenticatable
         'profile_photo',         // Updated to match migration column
         'address',               // NEW: Personal/Delivery address for buyers
         'fcm_token',
+        'phone_verified_at',
+
 
 
         // ── Vendor business profile ──────────────────────────────────────────
@@ -62,6 +64,8 @@ class User extends Authenticatable
         'password'          => 'hashed',
         'is_verified'       => 'boolean',
         'rating'            => 'float',
+        'phone_verified_at' => 'datetime',
+
     ];
 
     // ── Appended virtual attributes ────────────────────────────────────────────
