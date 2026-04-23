@@ -1,0 +1,3 @@
+*.sqlite*
+storage/app/firebase-credentials.json
+.env
