@@ -125,46 +125,59 @@ class KycController extends Controller
      * Swap the Log::info() call with your SMS provider (Termii, Twilio, etc.)
      * when you have one configured.
      */
-    public function sendPhoneOtp(Request $request): JsonResponse
-    {
-        $user = $request->user();
+   public function sendPhoneOtp(Request $request): JsonResponse
+{
+    $user = $request->user();
 
-        if ($user->phone_verified_at) {
-            return response()->json([
-                'status'  => false,
-                'message' => 'Phone number is already verified.',
-            ], 422);
-        }
-
-        if (! $user->phone) {
-            return response()->json([
-                'status'  => false,
-                'message' => 'No phone number on your account. Please update your profile first.',
-            ], 422);
-        }
-
-        $otp = $this->generateOtp($user, 'phone');
-
-        // ── SMS Provider ──────────────────────────────────────────────────────
-        // Replace the Log line below with your SMS provider call.
-        // Example using Termii:
-        // Http::post('https://api.ng.termii.com/api/sms/send', [
-        //     'to'      => $user->phone,
-        //     'from'    => 'SBRAI',
-        //     'sms'     => "Your SBRAI verification code is: {$otp->code}",
-        //     'type'    => 'plain',
-        //     'channel' => 'generic',
-        //     'api_key' => config('services.termii.key'),
-        // ]);
-        Log::info("PHONE OTP for {$user->phone}: {$otp->code}"); // remove in production
-        // ─────────────────────────────────────────────────────────────────────
-
+    if ($user->phone_verified_at) {
         return response()->json([
-            'status'  => true,
-            'message' => 'SMS code sent to ' . $user->phone,
-        ]);
+            'status'  => false,
+            'message' => 'Phone number is already verified.',
+        ], 422);
     }
 
+    if (! $user->phone) {
+        return response()->json([
+            'status'  => false,
+            'message' => 'No phone number on your account. Please update your profile first.',
+        ], 422);
+    }
+
+    $otp = $this->generateOtp($user, 'phone');
+
+    // TODO: Uncomment Termii block once sender ID "Sbrai" is approved
+    // in your Termii dashboard (usually 24-48 hours after submission).
+    // Until then OTP is written to the log for testing.
+
+    // ── Termii SMS (uncomment when sender ID is approved) ─────────────────
+    // $phone    = $this->formatPhoneNumber($user->phone);
+    // $response = \Illuminate\Support\Facades\Http::withoutVerifying()
+    //     ->post('https://api.ng.termii.com/api/sms/send', [
+    //         'to'      => $phone,
+    //         'from'    => config('services.termii.sender_id'),
+    //         'sms'     => "Your SBRAI verification code is: {$otp->code}. Valid for 10 minutes.",
+    //         'type'    => 'plain',
+    //         'channel' => 'generic',
+    //         'api_key' => config('services.termii.api_key'),
+    //     ]);
+    //
+    // if (! $response->successful()) {
+    //     Log::error('Termii SMS failed: ' . $response->body());
+    //     return response()->json([
+    //         'status'  => false,
+    //         'message' => 'Failed to send SMS. Please try again.',
+    //     ], 500);
+    // }
+    // ─────────────────────────────────────────────────────────────────────
+
+    // Log OTP for testing until Termii sender ID is approved
+    Log::info("PHONE OTP for {$user->phone}: {$otp->code}");
+
+    return response()->json([
+        'status'  => true,
+        'message' => 'SMS code sent to ' . $user->phone,
+    ]);
+}
     /**
      * POST /api/v1/kyc/phone/verify
      * Confirms the SMS OTP entered by the user.
@@ -338,4 +351,34 @@ class KycController extends Controller
             $fresh->update(['is_verified' => true]);
         }
     }
+
+    /**
+ * Convert Nigerian phone number to international format.
+ * 08136386103  → 2348136386103
+ * 8136386103   → 2348136386103
+ * +2348136386103 → 2348136386103
+ */
+private function formatPhoneNumber(string $phone): string
+{
+    // Remove all spaces and dashes
+    $phone = preg_replace('/[\s\-]/', '', $phone);
+
+    // Remove leading +
+    if (str_starts_with($phone, '+')) {
+        $phone = substr($phone, 1);
+    }
+
+    // Already in international format
+    if (str_starts_with($phone, '234')) {
+        return $phone;
+    }
+
+    // Convert 0XXXXXXXXXX to 234XXXXXXXXXX
+    if (str_starts_with($phone, '0')) {
+        return '234' . substr($phone, 1);
+    }
+
+    // Add 234 prefix if missing
+    return '234' . $phone;
+}
 }

@@ -47,7 +47,9 @@ class User extends Authenticatable
 
         // ── Rating ──────────────────────────────────────────────────────────
         'rating',                // average star rating 0.0–5.0 from buyer reviews
-    ];
+        'email_verified_at',   // ← add this
+         'phone_verified_at',
+        ];
 
     // ── Hidden from serialisation ──────────────────────────────────────────────
 
