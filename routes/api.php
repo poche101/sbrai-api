@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\TranslationController;
 use App\Http\Controllers\Api\AgoraController;
 use App\Http\Controllers\Api\KycController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\SocialAuthController;
 
 /*
 |--------------------------------------------------------------------------
@@ -26,6 +27,11 @@ Route::prefix('v1')->group(function () {
     Route::get('/login', function () {
         return response()->json(['message' => 'Unauthenticated.'], 401);
     })->name('login');
+
+    // ── Social Auth (Public) ───────────────────────────────────────────────────
+Route::prefix('auth/social')->group(function () {
+    Route::post('google', [SocialAuthController::class, 'googleAuth']);
+});
 
     // ── Translation System ─────────────────────────────────────────────────────
     Route::prefix('translations')->group(function () {

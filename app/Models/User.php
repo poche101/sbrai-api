@@ -25,6 +25,9 @@ class User extends Authenticatable
         'address',               // NEW: Personal/Delivery address for buyers
         'fcm_token',
         'phone_verified_at',
+        'google_id',
+        'avatar',
+        'auth_provider',
 
 
 
