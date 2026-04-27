@@ -28,6 +28,7 @@ class User extends Authenticatable
         'google_id',
         'avatar',
         'auth_provider',
+         'facebook_id',
 
 
 

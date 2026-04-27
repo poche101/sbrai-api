@@ -31,6 +31,8 @@ Route::prefix('v1')->group(function () {
     // ── Social Auth (Public) ───────────────────────────────────────────────────
 Route::prefix('auth/social')->group(function () {
     Route::post('google', [SocialAuthController::class, 'googleAuth']);
+    Route::post('facebook', [SocialAuthController::class, 'facebookAuth']);
+
 });
 
     // ── Translation System ─────────────────────────────────────────────────────
