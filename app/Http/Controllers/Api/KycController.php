@@ -10,6 +10,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use App\Http\Requests\Api\Vendor\NINVerificationRequest;
+use App\Services\MonoNINService;
+use App\Models\NINVerificationLog;
 
 class KycController extends Controller
 {
@@ -381,4 +384,40 @@ private function formatPhoneNumber(string $phone): string
     // Add 234 prefix if missing
     return '234' . $phone;
 }
+
+    protected $monoNINService;
+
+    public function __construct(MonoNINService $monoNINService)
+    {
+        $this->monoNINService = $monoNINService;
+    }
+
+    /**
+     * Verify NIN
+     */
+    public function verify(NINVerificationRequest $request): JsonResponse
+    {
+        $result = $this->monoNINService->verifyNIN($request->nin);
+
+        if ($result['status'] === 'success') {
+            return response()->json([
+                'status' => 'success',
+                'message' => $result['message'],
+                'data' => [
+                    'verified' => true,
+                    'nin_data' => $result['data'],
+                    'tracking_id' => $result['tracking_id'] ?? null,
+                    'from_cache' => $result['from_cache'] ?? false
+                ]
+            ]);
+        }
+
+        return response()->json([
+            'status' => 'error',
+            'message' => $result['message'],
+            'error' => $result['error'] ?? null
+        ], 400);
+    }
+
+
 }
