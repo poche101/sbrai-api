@@ -118,7 +118,7 @@ Route::prefix('auth/social')->group(function () {
         // POST /api/v1/kyc/identity/verify
         // Called when Flutter taps "Verify with NIN"
         // Accepts: nin (required), document (optional file)
-        Route::post('identity/verify', [KycController::class, 'verifyIdentity']);
+        Route::post('identity/verify', [KycController::class, 'verify']);
     });
 
     // ── Buyer Protected Routes ─────────────────────────────────────────────────

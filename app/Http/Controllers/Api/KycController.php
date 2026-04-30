@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
-use App\Http\Requests\Api\Vendor\NINVerificationRequest;
+use App\Http\Requests\NINVerificationRequest;
 use App\Services\MonoNINService;
 use App\Models\NINVerificationLog;
 

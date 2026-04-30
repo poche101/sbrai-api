@@ -2,14 +2,12 @@
 
 namespace App\Services;
 
-use App\Models\NINVerificationLog;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class MonoNINService
 {
     protected $baseUrl;
-
     protected $secretKey;
 
     public function __construct()
@@ -20,46 +18,24 @@ class MonoNINService
 
     /**
      * Verify NIN using Mono API
+     * No personal data is stored in database for privacy compliance
      */
     public function verifyNIN(string $nin): array
     {
         try {
-            // Check if NIN was recently verified (e.g., in the last 24 hours)
-            $existingVerification = NINVerificationLog::where('nin', $nin)
-                ->where('verification_status', 'verified')
-                ->where('created_at', '>=', now()->subHours(24))
-                ->first();
-
-            if ($existingVerification) {
-                return [
-                    'status' => 'success',
-                    'message' => 'NIN already verified',
-                    'data' => $existingVerification->response_data,
-                    'from_cache' => true,
-                ];
-            }
-
-            // Create log entry
-            $log = NINVerificationLog::create([
-                'nin' => $nin,
-                'status' => 'pending',
-                'verification_status' => 'pending',
-                'request_data' => ['nin' => $nin],
-            ]);
-
             // Make API request to Mono
             $response = Http::withHeaders([
                 'accept' => 'application/json',
                 'content-type' => 'application/json',
                 'mono-sec-key' => $this->secretKey,
-            ])->post($this->baseUrl.'/lookup/nin', [
+            ])->post($this->baseUrl . '/lookup/nin', [
                 'nin' => $nin,
             ]);
 
-            // Log the response
-            $log->update([
-                'response_data' => $response->json(),
-                'status' => $response->successful() ? 'success' : 'failed',
+            // Only log minimal metadata (no personal data)
+            Log::info('NIN verification attempt', [
+                'timestamp' => now()->toDateTimeString(),
+                'successful' => $response->successful(),
             ]);
 
             if ($response->successful()) {
@@ -69,35 +45,45 @@ class MonoNINService
                 if (isset($data['status']) && $data['status'] === 'successful') {
                     $ninData = $data['data'];
 
-                    // Update log with detailed information
-                    $log->update([
-                        'verification_status' => 'verified',
-                        'tracking_id' => $ninData['tracking_id'] ?? null,
-                        'central_id' => $ninData['central_iD'] ?? null,
-                        'firstname' => $ninData['firstname'] ?? null,
-                        'middlename' => $ninData['middlename'] ?? null,
-                        'surname' => $ninData['surname'] ?? null,
-                        'photo' => $ninData['photo'] ?? null,
-                        'signature' => $ninData['signature'] ?? null,
-                        'birthdate' => $ninData['birthdate'] ?? null,
-                        'gender' => $ninData['gender'] ?? null,
-                        'phone_number' => $ninData['telephoneno'] ?? null,
-                        'email' => $ninData['email'] ?? null,
-                        'profession' => $ninData['profession'] ?? null,
-                        'residence_address' => $ninData['residence_address'] ?? null,
-                    ]);
-
+                    // Return data WITHOUT storing in database
                     return [
                         'status' => 'success',
                         'message' => $data['message'] ?? 'NIN verified successfully',
-                        'data' => $ninData,
+                        'data' => [
+                            'firstname' => $ninData['firstname'] ?? null,
+                            'middlename' => $ninData['middlename'] ?? null,
+                            'surname' => $ninData['surname'] ?? null,
+                            'photo' => $ninData['photo'] ?? null,
+                            'signature' => $ninData['signature'] ?? null,
+                            'birthdate' => $ninData['birthdate'] ?? null,
+                            'gender' => $ninData['gender'] ?? null,
+                            'telephoneno' => $ninData['telephoneno'] ?? null,
+                            'email' => $ninData['email'] ?? null,
+                            'profession' => $ninData['profession'] ?? null,
+                            'residence_address' => $ninData['residence_address'] ?? null,
+                            'tracking_id' => $ninData['tracking_id'] ?? null,
+                            'central_iD' => $ninData['central_iD'] ?? null,
+                        ],
                         'tracking_id' => $ninData['tracking_id'] ?? null,
                     ];
                 }
+
+                // Handle unexpected successful response structure
+                Log::warning('Unexpected Mono API response structure', [
+                    'response_keys' => array_keys($data),
+                ]);
+
+                return [
+                    'status' => 'error',
+                    'message' => 'Unexpected response from verification service',
+                    'error' => 'Invalid response structure',
+                ];
             }
 
-            // If verification failed
-            $log->update(['verification_status' => 'failed']);
+            // If API request failed
+            Log::warning('NIN verification API request failed', [
+                'http_status' => $response->status(),
+            ]);
 
             return [
                 'status' => 'error',
@@ -106,31 +92,17 @@ class MonoNINService
             ];
 
         } catch (\Exception $e) {
-            Log::error('Mono NIN Verification Error: '.$e->getMessage());
-
-            // Update log if it exists
-            if (isset($log)) {
-                $log->update([
-                    'verification_status' => 'failed',
-                    'response_data' => ['error' => $e->getMessage()],
-                ]);
-            }
+            // Log error without NIN data
+            Log::error('NIN Verification Service Error', [
+                'error_type' => get_class($e),
+                'error_message' => $e->getMessage(),
+            ]);
 
             return [
                 'status' => 'error',
-                'message' => 'NIN verification service error',
+                'message' => 'NIN verification service is temporarily unavailable. Please try again later.',
                 'error' => $e->getMessage(),
             ];
         }
-    }
-
-    /**
-     * Get verification history for a NIN
-     */
-    public function getVerificationHistory(string $nin)
-    {
-        return NINVerificationLog::where('nin', $nin)
-            ->orderBy('created_at', 'desc')
-            ->get();
     }
 }

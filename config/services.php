@@ -56,4 +56,9 @@ return [
     'redirect'      => env('FACEBOOK_REDIRECT_URI'),
 ],
 
+    'mono' => [
+        'secret_key' => env('MONO_SECRET_KEY'),
+        'base_url' => env('MONO_BASE_URL', 'https://api.withmono.com/v3'),
+    ],
+
 ];
