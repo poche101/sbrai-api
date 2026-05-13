@@ -56,6 +56,7 @@ class VendorProfileController extends Controller
                 'city'             => $vendor->city  ?? '',
                 'business_description' => $vendor->business_description ?? '',
                 'logo_url'         => $vendor->logo_url,
+                'profile_photo_url'    => $vendor->profile_photo_url,
 
                 // ── KYC ──────────────────────────────────────────────────────
                 'nin'              => $vendor->nin ?? '',
@@ -135,6 +136,7 @@ class VendorProfileController extends Controller
         // Store new photo
         $path = $request->file('photo')->store('profile_photos', 'public');
         $user->update(['profile_photo_path' => $path]);
+        $user = $user->fresh();
 
         return response()->json([
             'status'  => 'success',

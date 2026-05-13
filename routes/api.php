@@ -29,19 +29,18 @@ Route::prefix('v1')->group(function () {
     })->name('login');
 
     // ── Social Auth (Public) ───────────────────────────────────────────────────
-Route::prefix('auth/social')->group(function () {
-    Route::post('google', [SocialAuthController::class, 'googleAuth']);
-    Route::post('facebook', [SocialAuthController::class, 'facebookAuth']);
-
-});
+    Route::prefix('auth/social')->group(function () {
+        Route::post('google',   [SocialAuthController::class, 'googleAuth']);
+        Route::post('facebook', [SocialAuthController::class, 'facebookAuth']);
+    });
 
     // ── Translation System ─────────────────────────────────────────────────────
     Route::prefix('translations')->group(function () {
-        Route::get('locales',                [TranslationController::class, 'locales']);
-        Route::get('version',                [TranslationController::class, 'version']);
-        Route::get('{locale}',               [TranslationController::class, 'byLocale']);
-        Route::get('{locale}/{group}',       [TranslationController::class, 'byGroup']);
-        Route::post('{locale}/{group}/{key}',[TranslationController::class, 'upsert']);
+        Route::get('locales',                 [TranslationController::class, 'locales']);
+        Route::get('version',                 [TranslationController::class, 'version']);
+        Route::get('{locale}',                [TranslationController::class, 'byLocale']);
+        Route::get('{locale}/{group}',        [TranslationController::class, 'byGroup']);
+        Route::post('{locale}/{group}/{key}', [TranslationController::class, 'upsert']);
     });
 
     // ── Auth ───────────────────────────────────────────────────────────────────
@@ -55,10 +54,9 @@ Route::prefix('auth/social')->group(function () {
 
         // Protected
         Route::middleware('auth:sanctum')->group(function () {
-            Route::post('logout',              [AuthController::class, 'logout']);
-            Route::get('me',                   [AuthController::class, 'me']);
-            Route::post('buyer/profile/photo', [AuthController::class, 'updateBuyerProfilePhoto']);
-            Route::post('vendor/profile',      [AuthController::class, 'updateVendorProfile']);
+            Route::post('logout',         [AuthController::class, 'logout']);
+            Route::get('me',              [AuthController::class, 'me']);
+            Route::post('vendor/profile', [AuthController::class, 'updateVendorProfile']);
 
             // FCM token — saved on login from Flutter so calls/chat
             // push notifications can reach the device
@@ -93,30 +91,18 @@ Route::prefix('auth/social')->group(function () {
     Route::middleware('auth:sanctum')->prefix('kyc')->group(function () {
 
         // GET  /api/v1/kyc/status
-        // Called on KYCScreen load to pre-fill the progress bar
         Route::get('status', [KycController::class, 'status']);
 
-        // ── Email ──────────────────────────────────────────────────────────
-        // POST /api/v1/kyc/email/send
-        // Called when Flutter taps "Send Verification Code"
+        // ── Email ──────────────────────────────────────────────────────────────
         Route::post('email/send',   [KycController::class, 'sendEmailOtp']);
-
-        // POST /api/v1/kyc/email/verify
-        // Called when Flutter submits the 6-digit code
         Route::post('email/verify', [KycController::class, 'verifyEmail']);
 
-        // ── Phone ──────────────────────────────────────────────────────────
-        // POST /api/v1/kyc/phone/send
-        // Called when Flutter taps "Send SMS Code"
+        // ── Phone ──────────────────────────────────────────────────────────────
         Route::post('phone/send',   [KycController::class, 'sendPhoneOtp']);
-
-        // POST /api/v1/kyc/phone/verify
-        // Called when Flutter submits the 6-digit SMS code
         Route::post('phone/verify', [KycController::class, 'verifyPhone']);
 
-        // ── Identity ───────────────────────────────────────────────────────
+        // ── Identity ───────────────────────────────────────────────────────────
         // POST /api/v1/kyc/identity/verify
-        // Called when Flutter taps "Verify with NIN"
         // Accepts: nin (required), document (optional file)
         Route::post('identity/verify', [KycController::class, 'verify']);
     });
@@ -174,7 +160,7 @@ Route::prefix('auth/social')->group(function () {
         // Profile
         Route::prefix('profile')->group(function () {
             Route::get('/',      [VendorProfileController::class, 'show']);
-            Route::patch('/',    [VendorProfileController::class, 'update']);
+            Route::match(['POST', 'PATCH'], '/', [VendorProfileController::class, 'update']);
             Route::post('photo', [VendorProfileController::class, 'updatePhoto']);
             Route::post('logo',  [VendorProfileController::class, 'updateLogo']);
         });
@@ -196,11 +182,37 @@ Route::prefix('auth/social')->group(function () {
             Route::delete('account',       [VendorSettingsController::class, 'deleteAccount']);
         });
 
-        // Ad Management
-        Route::get('ads/my',      [AdController::class, 'myAds']);
-        Route::post('ads',        [AdController::class, 'store']);
-        Route::post('ads/{id}',   [AdController::class, 'update'])->where('id', '[0-9]+');
-        Route::delete('ads/{id}', [AdController::class, 'destroy'])->where('id', '[0-9]+');
+        // ── Ad / Listing Management ────────────────────────────────────────────
+        //
+        // AdController handles the standard CRUD flow (store, bulk update, destroy)
+        // that was already in place. The three VendorDashboardController routes below
+        // add the per-listing show, edit, and delete actions introduced to support
+        // the Flutter Edit/Delete Listing screens. Both controller scopes enforce
+        // ownership — every query is filtered to the authenticated vendor's user_id.
+        //
+        //  GET    /api/v1/vendor/ads/my          → list all of the vendor's ads
+        //  POST   /api/v1/vendor/ads             → create a new ad
+        //  GET    /api/v1/vendor/ads/{id}        → fetch a single ad (pre-fill edit form)
+        //  PUT    /api/v1/vendor/ads/{id}        → update title/price/images/status/etc.
+        //  POST   /api/v1/vendor/ads/{id}        → same as PUT for multipart clients
+        //                                          that cannot send PUT with files
+        //  DELETE /api/v1/vendor/ads/{id}        → permanently delete ad + images
+
+        Route::get('ads/my', [AdController::class, 'myAds']);
+        Route::post('ads',   [AdController::class, 'store']);
+
+        Route::where(['id' => '[0-9]+'])->group(function () {
+
+            // Show a single listing (for the Edit Listing pre-fill)
+            Route::get('ads/{id}', [VendorDashboardController::class, 'showListing']);
+
+            // Update listing — accepts PUT or POST (multipart workaround)
+            Route::put('ads/{id}',  [VendorDashboardController::class, 'updateListing']);
+            Route::post('ads/{id}', [VendorDashboardController::class, 'updateListing']);
+
+            // Permanently delete a listing
+            Route::delete('ads/{id}', [VendorDashboardController::class, 'deleteListing']);
+        });
     });
 
 });

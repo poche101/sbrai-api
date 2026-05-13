@@ -22,6 +22,7 @@ class User extends Authenticatable
         'password',
         'role',                  // 'buyer' | 'vendor'
         'profile_photo',         // Updated to match migration column
+        'profile_photo_path',
         'address',               // NEW: Personal/Delivery address for buyers
         'fcm_token',
         'phone_verified_at',
@@ -172,9 +173,10 @@ class User extends Authenticatable
      */
     public function getProfilePhotoUrlAttribute(): ?string
     {
-        return $this->profile_photo
-            ? Storage::disk('public')->url($this->profile_photo)
-            : null;
+        $photo = $this->profile_photo_path ?? $this->profile_photo;
+return $photo
+    ? Storage::disk('public')->url($photo)
+    : null;
     }
 
     // ══════════════════════════════════════════════════════════════════════════
