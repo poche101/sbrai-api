@@ -118,6 +118,8 @@ Route::prefix('v1')->group(function () {
         });
 
         // Favorites
+        // Toggle favorite (most important for frontend)
+        Route::post('/ads/{ad}/favorite', [FavoritesController::class, 'toggle']);
         Route::get('favorites',           [FavoritesController::class, 'index']);
         Route::delete('favorites/{adId}', [FavoritesController::class, 'destroy'])
             ->where('adId', '[0-9]+');

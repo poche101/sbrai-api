@@ -206,9 +206,9 @@ class AdController extends Controller
         $ad = Ad::findOrFail($id);
 
         // Ownership check — uncomment once auth is wired
-        // if ($ad->user_id !== auth()->id()) {
-        //     return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
-        // }
+        if ($ad->user_id !== auth()->id()) {
+           return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
+         }
 
         $ad->images()->delete();
         $ad->delete();
