@@ -13,6 +13,7 @@
         "laravel/sanctum": "^4.0",
         "laravel/socialite": "^5.26",
         "laravel/tinker": "^3.0",
+        "pusher/pusher-php-server": "*",
         "tomatophp/laravel-agora": "^1.0"
     },
     "require-dev": {

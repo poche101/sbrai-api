@@ -3,44 +3,56 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\AdFavorite;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Models\AdFavorite;
 
 class FavoritesController extends Controller
 {
-    // ── GET /api/favorites ─────────────────────────────────────────────────────
     /**
-     * All ads the authenticated buyer has saved.
+     * Display a listing of the user's favorites
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request)
     {
-        $favorites = $request->user()
-            ->favoriteAds()
-            ->with(['images', 'category', 'user:id,name,business_name,is_verified'])
-            ->withCount(['views', 'favorites'])
-            ->latest('ad_favorites.created_at')
-            ->paginate(20);
+        $user = $request->user();
+
+        $favorites = AdFavorite::where('user_id', $user->id)
+            ->with(['ad'])           // Load the ad details
+            ->latest()
+            ->get();
 
         return response()->json([
-            'success' => true,
-            'data'    => $favorites,
+            'status' => 'success',
+            'data'   => $favorites
         ]);
     }
 
-    // ── DELETE /api/favorites/{adId} ───────────────────────────────────────────
     /**
-     * Remove a single saved ad (unfavorite without toggling via ad endpoint).
+     * Toggle favorite (Add or Remove)
      */
-    public function destroy(Request $request, int $adId): JsonResponse
+    public function toggle(Request $request, $adId)
     {
-        AdFavorite::where('ad_id', $adId)
-            ->where('user_id', $request->user()->id)
-            ->delete();
+        $user = $request->user();
+
+        $favorite = AdFavorite::where('user_id', $user->id)
+                              ->where('ad_id', $adId)
+                              ->first();
+
+        if ($favorite) {
+            // Remove from favorites
+            $favorite->delete();
+            $message = 'Removed from favorites';
+        } else {
+            // Add to favorites
+            AdFavorite::create([
+                'user_id' => $user->id,
+                'ad_id'   => $adId,
+            ]);
+            $message = 'Added to favorites';
+        }
 
         return response()->json([
-            'success' => true,
-            'message' => 'Removed from saved ads.',
+            'status'  => 'success',
+            'message' => $message
         ]);
     }
 }

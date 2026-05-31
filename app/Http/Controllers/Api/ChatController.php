@@ -91,10 +91,15 @@ class ChatController extends Controller
             'buyer_read'      => true,
         ]);
 
-        // Broadcast real-time event
-        broadcast(new MessageSent($message));
+        // Broadcast real-time event — non-fatal so a Pusher
+        // misconfiguration never prevents the chat from opening
+        try {
+            broadcast(new MessageSent($message));
+        } catch (\Throwable $e) {
+            Log::warning('Broadcast failed (start): ' . $e->getMessage());
+        }
 
-        // FCM push to vendor
+        // FCM push to vendor — already non-fatal inside sendPushNotification()
         $this->sendPushNotification(
             recipientId: $ad->user_id,
             senderName:  $buyer->name,
@@ -136,9 +141,13 @@ class ChatController extends Controller
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
 
-        // Broadcast read receipt if there were unread messages
+        // Broadcast read receipt — non-fatal
         if ($updated > 0) {
-            broadcast(new MessageRead($chat->id, $user->id));
+            try {
+                broadcast(new MessageRead($chat->id, $user->id));
+            } catch (\Throwable $e) {
+                Log::warning('Broadcast failed (MessageRead): ' . $e->getMessage());
+            }
         }
 
         $messages = ChatMessage::where('chat_id', $chat->id)
@@ -189,10 +198,15 @@ class ChatController extends Controller
             'buyer_read'      => ! $isVendorSending,
         ]);
 
-        // Broadcast real-time event to both participants
-        broadcast(new MessageSent($message));
+        // Broadcast real-time event — non-fatal so a Pusher
+        // misconfiguration never prevents the message from saving
+        try {
+            broadcast(new MessageSent($message));
+        } catch (\Throwable $e) {
+            Log::warning('Broadcast failed (send): ' . $e->getMessage());
+        }
 
-        // FCM push to the other party
+        // FCM push to the other party — already non-fatal inside sendPushNotification()
         $recipientId = $isVendorSending ? $chat->buyer_id : $chat->vendor_id;
         $this->sendPushNotification(
             recipientId: $recipientId,
@@ -234,8 +248,13 @@ class ChatController extends Controller
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
 
+        // Broadcast read receipt — non-fatal
         if ($updated > 0) {
-            broadcast(new MessageRead($chat->id, $user->id));
+            try {
+                broadcast(new MessageRead($chat->id, $user->id));
+            } catch (\Throwable $e) {
+                Log::warning('Broadcast failed (markRead): ' . $e->getMessage());
+            }
         }
 
         return response()->json([
