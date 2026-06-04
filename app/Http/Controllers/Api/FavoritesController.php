@@ -55,4 +55,28 @@ class FavoritesController extends Controller
             'message' => $message
         ]);
     }
+
+    /**
+ * Remove a specific favorite by ad ID
+ */
+public function destroy(Request $request, $adId)
+{
+    $user = $request->user();
+
+    $deleted = AdFavorite::where('user_id', $user->id)
+                         ->where('ad_id', $adId)
+                         ->delete();
+
+    if (!$deleted) {
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Favorite not found',
+        ], 404);
+    }
+
+    return response()->json([
+        'status'  => 'success',
+        'message' => 'Removed from favorites',
+    ]);
+}
 }

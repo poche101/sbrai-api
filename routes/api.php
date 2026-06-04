@@ -85,6 +85,7 @@ Route::prefix('v1')->group(function () {
         ->post('ads/{id}/favorite', [VendorDashboardController::class, 'toggleFavorite'])
         ->where('id', '[0-9]+');
 
+
     // ── KYC Verification (Shared – Buyer & Vendor) ─────────────────────────────
     // Both buyers and vendors go through the same KYC flow.
     // The Flutter KYCScreen is shared between both roles.
@@ -215,6 +216,36 @@ Route::prefix('v1')->group(function () {
             // Permanently delete a listing
             Route::delete('ads/{id}', [VendorDashboardController::class, 'deleteListing']);
         });
+    });
+
+    // ── Text Translation (Public) ──────────────────────────────────────────────
+    Route::post('translate', function (\Illuminate\Http\Request $request) {
+        $request->validate([
+            'text'             => 'required|string|max:5000',
+            'target_language'  => 'required|string|max:10',  // matches Flutter
+        ]);
+
+        $response = \Illuminate\Support\Facades\Http::get(
+            'https://api.mymemory.translated.net/get',
+            [
+                'q'        => $request->text,
+                'langpair' => 'en|' . $request->target_language,
+            ]
+        );
+
+        if (! $response->successful()) {
+            return response()->json([
+                'success'          => false,
+                'translated_text'  => $request->text,  // matches Flutter
+            ], 200);
+        }
+
+        $data = $response->json();
+
+        return response()->json([
+            'success'          => true,
+            'translated_text'  => $data['responseData']['translatedText'] ?? $request->text,
+        ]);
     });
 
 });

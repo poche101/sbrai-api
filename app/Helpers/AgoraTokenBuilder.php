@@ -121,12 +121,15 @@ class AccessToken2
             $msg .= $service->pack();
         }
 
-        $hh        = hash_hmac('sha256', $this->appCertificate, pack('N', $this->issueTs), true);
-        $signature = hash_hmac('sha256', $hh, pack('N', $this->salt), true);
-        $signature = hash_hmac('sha256', $signature, $msg, true);
+        // ✅ CORRECT signing order per Agora AccessToken2 spec:
+        // 1. signing = HMAC-SHA256(appCertificate, appId + issueTs + salt + msg)
+        $signing  = hash_hmac('sha256', $this->appId,                    $this->appCertificate, true);
+        $signing  = hash_hmac('sha256', pack('N', $this->issueTs),       $signing,              true);
+        $signing  = hash_hmac('sha256', pack('N', $this->salt),          $signing,              true);
+        $signing  = hash_hmac('sha256', $msg,                            $signing,              true);
 
         $body  = pack('n', strlen($this->appId)) . $this->appId;
-        $body .= pack('n', strlen($signature))   . $signature;
+        $body .= pack('n', strlen($signing))     . $signing;
         $body .= $msg;
 
         return self::VERSION . base64_encode(gzcompress($body));
