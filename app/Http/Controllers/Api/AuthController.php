@@ -7,8 +7,12 @@ use App\Models\User;
 use App\Services\WatermarkService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rules\Password;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Storage;
 
@@ -29,7 +33,7 @@ class AuthController extends Controller
             'name'     => ['required', 'string', 'max:255'],
             'email'    => ['required', 'email', 'unique:users,email'],
             'phone'    => ['nullable', 'string', 'max:20'],
-            'password' => ['required', 'confirmed', Password::min(8)],
+            'password' => ['required', 'confirmed', PasswordRule::min(8)],
         ]);
 
         $user = User::create([
@@ -64,7 +68,7 @@ class AuthController extends Controller
         'name'                 => ['required', 'string', 'max:255'],
         'email'                => ['required', 'email', 'unique:users,email'],
         'phone'                => ['required', 'string', 'max:20'],
-        'password'             => ['required', 'confirmed', Password::min(8)],
+        'password'             => ['required', 'confirmed', PasswordRule::min(8)],
         'business_name'        => ['required', 'string', 'max:255'],
         'business_category'    => ['nullable', 'string', 'max:100'],
         'business_address'     => ['required', 'string', 'max:255'],
@@ -214,6 +218,88 @@ class AuthController extends Controller
         ],
     ]);
 }
+
+    // ── POST /api/auth/forgot-password ─────────────────────────────────────────
+    /**
+     * Step 1 of the password reset flow.
+     * Accepts an email address, generates a reset token, and sends the reset
+     * link/OTP to the user's email via Laravel's built-in password broker.
+     *
+     * Body: { "email": "user@example.com" }
+     *
+     * Always returns 200 — we intentionally do not reveal whether the email
+     * exists in our system (security best practice).
+     */
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $request->validate([
+            'email' => ['required', 'email'],
+        ]);
+
+        // Laravel's Password facade handles token creation + sending the
+        // "reset password" notification via the configured mail driver.
+        $status = Password::sendResetLink(
+            $request->only('email')
+        );
+
+        // Regardless of whether the email was found, return a generic success
+        // message to prevent user enumeration attacks.
+        return response()->json([
+            'success' => true,
+            'message' => 'If an account with that email exists, a password reset link has been sent.',
+        ]);
+    }
+
+    // ── POST /api/auth/reset-password ──────────────────────────────────────────
+    /**
+     * Step 2 of the password reset flow.
+     * The Flutter app collects the token (from the email link / deep link),
+     * the user's email, and the new password, then calls this endpoint.
+     *
+     * Body:
+     * {
+     *   "token":                 "the-reset-token-from-email",
+     *   "email":                 "user@example.com",
+     *   "password":              "newSecret123",
+     *   "password_confirmation": "newSecret123"
+     * }
+     */
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $request->validate([
+            'token'    => ['required', 'string'],
+            'email'    => ['required', 'email'],
+            'password' => ['required', 'confirmed', PasswordRule::min(8)],
+        ]);
+
+        $status = Password::reset(
+            $request->only('email', 'password', 'password_confirmation', 'token'),
+            function (User $user, string $password) {
+                // Invalidate all existing Sanctum tokens so any attacker who had
+                // an old token can no longer use it after the password is reset.
+                $user->tokens()->delete();
+
+                $user->forceFill([
+                    'password'       => Hash::make($password),
+                    'remember_token' => Str::random(60),
+                ])->save();
+            }
+        );
+
+        if ($status === Password::PASSWORD_RESET) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Password has been reset successfully. Please log in with your new password.',
+            ]);
+        }
+
+        // Possible failure reasons: invalid token, expired token, user not found.
+        return response()->json([
+            'success' => false,
+            'message' => 'The reset token is invalid or has expired. Please request a new password reset link.',
+        ], 422);
+    }
+
     // ── POST /api/auth/logout ──────────────────────────────────────────────────
     public function logout(Request $request): JsonResponse
     {

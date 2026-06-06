@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\BuyerProfileController;
 use App\Http\Controllers\Api\TranslationController;
 use App\Http\Controllers\Api\AgoraController;
 use App\Http\Controllers\Api\KycController;
+use App\Http\Controllers\Api\NotificationSettingsController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\SocialAuthController;
 
@@ -51,6 +52,12 @@ Route::prefix('v1')->group(function () {
         Route::post('register/vendor', [AuthController::class, 'registerVendor']);
         Route::post('login/buyer',     [AuthController::class, 'loginBuyer']);
         Route::post('login/vendor',    [AuthController::class, 'loginVendor']);
+
+        // Forgot / Reset password (public — user is not authenticated yet)
+        // POST /api/v1/auth/forgot-password  — sends reset link to email
+        // POST /api/v1/auth/reset-password   — consumes token, sets new password
+        Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
+        Route::post('reset-password',  [AuthController::class, 'resetPassword']);
 
         // Protected
         Route::middleware('auth:sanctum')->group(function () {
@@ -126,6 +133,18 @@ Route::prefix('v1')->group(function () {
             ->where('adId', '[0-9]+');
     });
 
+    // ── Notification & Privacy Settings (Shared – Buyer & Vendor) ─────────────
+    // Both buyers and vendors share the same Settings screen (screenshot above).
+    // The seven toggles map to dedicated boolean columns on the users table;
+    // see: database/migrations/..._add_notification_privacy_settings_to_users_table.php
+    //
+    //  GET   /api/v1/settings/notifications  → fetch current toggle states
+    //  PATCH /api/v1/settings/notifications  → update one or more toggles
+    Route::middleware('auth:sanctum')->prefix('settings')->group(function () {
+        Route::get('notifications',   [NotificationSettingsController::class, 'show']);
+        Route::patch('notifications', [NotificationSettingsController::class, 'update']);
+    });
+
     // ── Messaging / Chats (Shared – Buyer & Vendor) ────────────────────────────
     Route::middleware('auth:sanctum')->prefix('chats')->group(function () {
         Route::get('/',              [ChatController::class, 'index']);
@@ -149,7 +168,7 @@ Route::prefix('v1')->group(function () {
         Route::post('initiate', [AgoraController::class, 'initiateCall']);
 
         // POST /api/v1/calls/end
-        // Body: { "receiver_id": 5, "channel_name": "uuid" }
+        // Body: { "channel_name": "uuid" }
         Route::post('end',      [AgoraController::class, 'endCall']);
     });
 

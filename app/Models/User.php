@@ -29,9 +29,7 @@ class User extends Authenticatable
         'google_id',
         'avatar',
         'auth_provider',
-         'facebook_id',
-
-
+        'facebook_id',
 
         // ── Vendor business profile ──────────────────────────────────────────
         'business_name',
@@ -52,9 +50,20 @@ class User extends Authenticatable
 
         // ── Rating ──────────────────────────────────────────────────────────
         'rating',                // average star rating 0.0–5.0 from buyer reviews
-        'email_verified_at',   // ← add this
-         'phone_verified_at',
-        ];
+        'email_verified_at',
+        'phone_verified_at',
+
+        // ── Notification preferences ─────────────────────────────────────────
+        'notif_new_listings',    // Get notified about new items in your area
+        'notif_price_drops',     // Alert me when prices drop on favorited items
+        'notif_messages',        // Receive notifications for new messages
+        'notif_promotions',      // Receive promotional offers and deals
+
+        // ── Privacy & Security ───────────────────────────────────────────────
+        'privacy_show_online',   // Let others see when you're online
+        'privacy_show_phone',    // Display phone number on listings
+        'privacy_allow_msgs',    // Allow users to send you messages
+    ];
 
     // ── Hidden from serialisation ──────────────────────────────────────────────
 
@@ -73,6 +82,16 @@ class User extends Authenticatable
         'rating'            => 'float',
         'phone_verified_at' => 'datetime',
 
+        // Notification preferences
+        'notif_new_listings'  => 'boolean',
+        'notif_price_drops'   => 'boolean',
+        'notif_messages'      => 'boolean',
+        'notif_promotions'    => 'boolean',
+
+        // Privacy & Security
+        'privacy_show_online' => 'boolean',
+        'privacy_show_phone'  => 'boolean',
+        'privacy_allow_msgs'  => 'boolean',
     ];
 
     // ── Appended virtual attributes ────────────────────────────────────────────
@@ -174,9 +193,9 @@ class User extends Authenticatable
     public function getProfilePhotoUrlAttribute(): ?string
     {
         $photo = $this->profile_photo_path ?? $this->profile_photo;
-return $photo
-    ? Storage::disk('public')->url($photo)
-    : null;
+        return $photo
+            ? Storage::disk('public')->url($photo)
+            : null;
     }
 
     // ══════════════════════════════════════════════════════════════════════════
