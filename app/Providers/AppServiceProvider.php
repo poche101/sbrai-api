@@ -19,8 +19,11 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Bootstrap any application services.
      */
-    public function boot(): void
-    {
-        //
-    }
+   public function boot(): void
+{
+    \Illuminate\Auth\Notifications\ResetPassword::createUrlUsing(function ($user, string $token) {
+        return 'https://sbraisolutions.com/reset-password?token=' . $token
+             . '&email=' . urlencode($user->email);
+    });
+}
 }

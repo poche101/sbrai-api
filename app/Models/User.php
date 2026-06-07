@@ -262,4 +262,17 @@ class User extends Authenticatable
             'phone'                => $this->phone,
         ];
     }
+
+    /**
+ * Override the default reset URL so it points to our Flutter app
+ * instead of a web route. The token is included so Flutter can
+ * collect it from the email and pass it to /auth/reset-password.
+ */
+public function sendPasswordResetNotification($token): void
+{
+    $url = 'https://sbraisolutions.com/reset-password?token=' . $token
+         . '&email=' . urlencode($this->email);
+
+    $this->notify(new \Illuminate\Auth\Notifications\ResetPassword($token));
+}
 }

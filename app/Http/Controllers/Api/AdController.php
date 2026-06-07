@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class AdController extends Controller
 {
@@ -50,16 +51,22 @@ class AdController extends Controller
 
         $ads = $query->paginate($request->query('per_page', 20));
 
+        // Append full image URLs to each ad
+        $ads->getCollection()->transform(function ($ad) {
+            return $this->appendImageUrls($ad);
+        });
+
         return response()->json([
             'success' => true,
             'data'    => $ads,
         ]);
     }
 
-    // ── POST /api/ads ──────────────────────────────────────────────────────────
+    // ── POST /api/vendor/ads ───────────────────────────────────────────────────
     /**
      * Create a new ad (product, service, or property).
      * Images are watermarked before storage.
+     * Images are optional — a vendor can post without photos.
      */
     public function store(StoreAdRequest $request): JsonResponse
     {
@@ -68,7 +75,7 @@ class AdController extends Controller
         try {
             // ── 1. Persist the ad record ────────────────────────────────────
             $adData = [
-                'user_id'     => auth()->id(), // null if not authenticated yet
+                'user_id'     => auth()->id(),
                 'category_id' => $request->category_id,
                 'type'        => $request->type,
                 'title'       => $request->title,
@@ -87,27 +94,35 @@ class AdController extends Controller
 
             $ad = Ad::create($adData);
 
-            // ── 2. Process & store each image ───────────────────────────────
-            foreach ($request->file('images') as $index => $image) {
-                $path = $this->watermark->processAndStore(
-                    $image,
-                    'ads/' . $ad->id,
-                    'public'
-                );
+            // ── 2. Process & store each image (optional) ────────────────────
+            // Guard against null — images are not required
+            if ($request->hasFile('images')) {
+                foreach ($request->file('images') as $index => $image) {
+                    if (!$image || !$image->isValid()) continue;
 
-                $ad->images()->create([
-                    'path'       => $path,
-                    'disk'       => 'public',
-                    'sort_order' => $index,
-                ]);
+                    $path = $this->watermark->processAndStore(
+                        $image,
+                        'ads/' . $ad->id,
+                        'public'
+                    );
+
+                    $ad->images()->create([
+                        'path'       => $path,
+                        'disk'       => 'public',
+                        'sort_order' => $index,
+                    ]);
+                }
             }
 
             DB::commit();
 
+            $ad->load(['category', 'images']);
+            $ad = $this->appendImageUrls($ad);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Ad published successfully.',
-                'data'    => $ad->load(['category', 'images']),
+                'data'    => $ad,
             ], 201);
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -130,6 +145,8 @@ class AdController extends Controller
         $ad = Ad::with(['category', 'images', 'user:id,name,phone'])
             ->findOrFail($id);
 
+        $ad = $this->appendImageUrls($ad);
+
         return response()->json([
             'success' => true,
             'data'    => $ad,
@@ -140,11 +157,6 @@ class AdController extends Controller
     public function update(StoreAdRequest $request, int $id): JsonResponse
     {
         $ad = Ad::findOrFail($id);
-
-        // Ownership check — uncomment once auth is wired
-        // if ($ad->user_id !== auth()->id()) {
-        //     return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
-        // }
 
         DB::beginTransaction();
 
@@ -167,6 +179,8 @@ class AdController extends Controller
                 $ad->images()->delete();
 
                 foreach ($request->file('images') as $index => $image) {
+                    if (!$image || !$image->isValid()) continue;
+
                     $path = $this->watermark->processAndStore(
                         $image,
                         'ads/' . $ad->id,
@@ -183,10 +197,13 @@ class AdController extends Controller
 
             DB::commit();
 
+            $ad->load(['category', 'images']);
+            $ad = $this->appendImageUrls($ad);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Ad updated successfully.',
-                'data'    => $ad->load(['category', 'images']),
+                'data'    => $ad,
             ]);
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -205,10 +222,9 @@ class AdController extends Controller
     {
         $ad = Ad::findOrFail($id);
 
-        // Ownership check — uncomment once auth is wired
         if ($ad->user_id !== auth()->id()) {
-           return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
-         }
+            return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
+        }
 
         $ad->images()->delete();
         $ad->delete();
@@ -219,9 +235,9 @@ class AdController extends Controller
         ]);
     }
 
-    // ── GET /api/ads/my ────────────────────────────────────────────────────────
+    // ── GET /api/vendor/ads/my ─────────────────────────────────────────────────
     /**
-     * All ads belonging to the authenticated user.
+     * All ads belonging to the authenticated vendor.
      */
     public function myAds(Request $request): JsonResponse
     {
@@ -230,9 +246,34 @@ class AdController extends Controller
             ->latest()
             ->paginate($request->query('per_page', 20));
 
+        // Append full image URLs
+        $ads->getCollection()->transform(function ($ad) {
+            return $this->appendImageUrls($ad);
+        });
+
         return response()->json([
             'success' => true,
             'data'    => $ads,
         ]);
+    }
+
+    // ── Private helper ─────────────────────────────────────────────────────────
+
+    /**
+     * Append a full public `url` to every image on the ad.
+     * Flutter uses `image['url']` to display images — without this
+     * it only receives the relative path (e.g. "ads/1/photo.jpg")
+     * which is not a valid URL the device can load.
+     */
+    private function appendImageUrls(Ad $ad): Ad
+    {
+        $ad->images->transform(function ($image) {
+            $image->url = $image->path
+                ? Storage::disk('public')->url($image->path)
+                : null;
+            return $image;
+        });
+
+        return $ad;
     }
 }

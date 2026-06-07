@@ -231,24 +231,34 @@ class AuthController extends Controller
      * exists in our system (security best practice).
      */
     public function forgotPassword(Request $request): JsonResponse
-    {
-        $request->validate([
-            'email' => ['required', 'email'],
-        ]);
+{
+    $request->validate([
+        'email' => ['required', 'email'],
+    ]);
 
-        // Laravel's Password facade handles token creation + sending the
-        // "reset password" notification via the configured mail driver.
-        $status = Password::sendResetLink(
-            $request->only('email')
-        );
+    $email = $request->email;
+    $user  = User::where('email', $email)->first();
 
-        // Regardless of whether the email was found, return a generic success
-        // message to prevent user enumeration attacks.
+    // Always return success — never reveal if email exists
+    if (!$user) {
         return response()->json([
             'success' => true,
             'message' => 'If an account with that email exists, a password reset link has been sent.',
         ]);
     }
+
+    // Generate the token manually using the password broker
+    $token = app('auth.password.broker')->createToken($user);
+
+    // Send the notification with the token directly —
+    // no named route needed, Flutter will collect the token from the email
+    $user->sendPasswordResetNotification($token);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'If an account with that email exists, a password reset link has been sent.',
+    ]);
+}
 
     // ── POST /api/auth/reset-password ──────────────────────────────────────────
     /**
